@@ -1,11 +1,11 @@
 import 'package:analyzer/dart/element/element.dart';
 import 'package:build/build.dart';
+import 'package:hive/hive.dart';
 import 'package:hive_generator/src/builder.dart';
 import 'package:hive_generator/src/class_builder.dart';
 import 'package:hive_generator/src/enum_builder.dart';
 import 'package:hive_generator/src/helper.dart';
 import 'package:source_gen/source_gen.dart';
-import 'package:hive/hive.dart';
 
 class TypeAdapterGenerator extends GeneratorForAnnotation<HiveType> {
   @override
@@ -23,23 +23,23 @@ class TypeAdapterGenerator extends GeneratorForAnnotation<HiveType> {
 
     var typeId = getTypeId(annotation);
 
-    var adapterName = getAdapterName(cls.name, annotation);
-    var builder = cls.isEnum
+    var adapterName = getAdapterName(cls.displayName, annotation);
+    var builder = element is EnumElement
         ? EnumBuilder(cls, getters)
         : ClassBuilder(cls, getters, setters);
 
     return '''
-    class $adapterName extends TypeAdapter<${cls.name}> {
+    class $adapterName extends TypeAdapter<${cls.displayName}> {
       @override
-      final typeId = $typeId;
+      final int typeId = $typeId;
 
       @override
-      ${cls.name} read(BinaryReader reader) {
+      ${cls.displayName} read(BinaryReader reader) {
         ${builder.buildRead()}
       }
 
       @override
-      void write(BinaryWriter writer, ${cls.name} obj) {
+      void write(BinaryWriter writer, ${cls.displayName} obj) {
         ${builder.buildWrite()}
       }
     }
@@ -47,27 +47,22 @@ class TypeAdapterGenerator extends GeneratorForAnnotation<HiveType> {
   }
 
   ClassElement getClass(Element element) {
-    check(element.kind == ElementKind.CLASS,
+    check(element is ClassElement,
         'Only classes or enums are allowed to be annotated with @HiveType.');
-
     return element as ClassElement;
   }
 
   Set<String> getAllAccessorNames(ClassElement cls) {
     var accessorNames = <String>{};
-
-    var supertypes = cls.allSupertypes.map((it) => it.element);
+    var supertypes =
+        cls.allSupertypes.map((it) => it.element).whereType<ClassElement>();
     for (var type in [cls, ...supertypes]) {
-      for (var accessor in type.accessors) {
-        if (accessor.isSetter) {
-          var name = accessor.name;
-          accessorNames.add(name.substring(0, name.length - 1));
-        } else {
-          accessorNames.add(accessor.name);
+      for (var field in type.fields) {
+        if (!field.isStatic && field.name != null) {
+          accessorNames.add(field.name!);
         }
       }
     }
-
     return accessorNames;
   }
 
@@ -78,23 +73,25 @@ class TypeAdapterGenerator extends GeneratorForAnnotation<HiveType> {
     var getters = <AdapterField>[];
     var setters = <AdapterField>[];
     for (var name in accessorNames) {
-      var getter = cls.lookUpGetter(name, library);
+      var getter = cls.lookUpGetter(name: name, library: library);
       if (getter != null) {
         var getterAnn =
             getHiveFieldAnn(getter.variable) ?? getHiveFieldAnn(getter);
         if (getterAnn != null) {
           var field = getter.variable;
-          getters.add(AdapterField(getterAnn.index, field.name, field.type));
+          getters.add(
+              AdapterField(getterAnn.index, field.displayName, field.type));
         }
       }
 
-      var setter = cls.lookUpSetter('$name=', library);
+      var setter = cls.lookUpSetter(name: '$name=', library: library);
       if (setter != null) {
         var setterAnn =
             getHiveFieldAnn(setter.variable) ?? getHiveFieldAnn(setter);
         if (setterAnn != null) {
           var field = setter.variable;
-          setters.add(AdapterField(setterAnn.index, field.name, field.type));
+          setters.add(
+              AdapterField(setterAnn.index, field.displayName, field.type));
         }
       }
     }
@@ -104,16 +101,15 @@ class TypeAdapterGenerator extends GeneratorForAnnotation<HiveType> {
 
   void verifyFieldIndices(List<AdapterField> fields) {
     for (var field in fields) {
-      check(field.index >= 0 || field.index <= 255,
+      check(field.index >= 0 && field.index <= 255,
           'Field numbers can only be in the range 0-255.');
 
       for (var otherField in fields) {
         if (otherField == field) continue;
         if (otherField.index == field.index) {
           throw HiveError(
-            'Duplicate field number: ${field.index}. Fields "${field.name}" '
-            'and "${otherField.name}" have the same number.',
-          );
+              'Duplicate field number: ${field.index}. Fields "${field.name}" '
+              'and "${otherField.name}" have the same number.');
         }
       }
     }

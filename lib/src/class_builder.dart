@@ -1,89 +1,15 @@
-import 'dart:typed_data';
-
 import 'package:analyzer/dart/element/element.dart';
+import 'package:analyzer/dart/element/element.dart' show ParameterElement;
 import 'package:analyzer/dart/element/type.dart';
-import 'package:hive/hive.dart';
 import 'package:hive_generator/src/builder.dart';
 import 'package:hive_generator/src/helper.dart';
 import 'package:source_gen/source_gen.dart';
-import 'package:dartx/dartx.dart';
 
 class ClassBuilder extends Builder {
-  var hiveListChecker = const TypeChecker.fromRuntime(HiveList);
-  var listChecker = const TypeChecker.fromRuntime(List);
-  var mapChecker = const TypeChecker.fromRuntime(Map);
-  var setChecker = const TypeChecker.fromRuntime(Set);
-  var iterableChecker = const TypeChecker.fromRuntime(Iterable);
-  var uint8ListChecker = const TypeChecker.fromRuntime(Uint8List);
-
-  ClassBuilder(
-      ClassElement cls, List<AdapterField> getters, List<AdapterField> setters)
-      : super(cls, getters, setters);
-
-  @override
-  String buildRead() {
-    var code = StringBuffer();
-    code.writeln('''
-    var numOfFields = reader.readByte();
-    var fields = <int, dynamic>{
-      for (var i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
-    };
-    return ${cls.name}(
-    ''');
-
-    var constr = cls.constructors.firstOrNullWhere((it) => it.name.isEmpty);
-    check(constr != null, 'Provide an unnamed constructor.');
-
-    // The remaining fields to initialize.
-    var fields = setters.toList();
-
-    var initializingParams =
-        constr.parameters.where((param) => param.isInitializingFormal);
-    for (var param in initializingParams) {
-      var field = fields.firstOrNullWhere((it) => it.name == param.name);
-      // Final fields
-      field ??= getters.firstOrNullWhere((it) => it.name == param.name);
-      if (field != null) {
-        if (param.isNamed) {
-          code.write('${param.name}: ');
-        }
-        code.writeln('${_cast(param.type, 'fields[${field.index}]')},');
-        fields.remove(field);
-      }
-    }
-
-    code.writeln(')');
-
-    // There may still be fields to initialize that were not in the constructor
-    // as initializing formals. We do so using cascades.
-    for (var field in fields) {
-      code.writeln(
-          '..${field.name} = ${_cast(field.type, 'fields[${field.index}]')}');
-    }
-
-    code.writeln(';');
-
-    return code.toString();
-  }
-
-  String _cast(DartType type, String variable) {
-    if (hiveListChecker.isExactlyType(type)) {
-      return '($variable as HiveList)?.castHiveList()';
-    } else if (iterableChecker.isAssignableFromType(type) &&
-        !isUint8List(type)) {
-      return '($variable as List)${_castIterable(type)}';
-    } else if (mapChecker.isExactlyType(type)) {
-      return '($variable as Map)${_castMap(type)}';
-    } else {
-      return '$variable as ${type.name}';
-    }
-  }
-
-  bool isMapOrIterable(DartType type) {
-    return listChecker.isExactlyType(type) ||
-        setChecker.isExactlyType(type) ||
-        iterableChecker.isExactlyType(type) ||
-        mapChecker.isExactlyType(type);
+  // Helper to get constructor parameters for all analyzer versions
+  Iterable<dynamic> _getConstructorParameters(ConstructorElement constr) {
+    // Fallback for analyzer versions without .parameters or ParameterElement
+    return constr.children.where((e) => e.kind.name == 'PARAMETER');
   }
 
   bool isUint8List(DartType type) {
@@ -102,7 +28,7 @@ class ClassBuilder extends Builder {
       }
       return '?.map((dynamic e)=> ${_cast(arg, 'e')})$cast';
     } else {
-      return '?.cast<${arg.name}>()';
+      return '?.cast<${arg.getDisplayString(withNullability: false)}>()';
     }
   }
 
@@ -114,8 +40,91 @@ class ClassBuilder extends Builder {
       return '?.map((dynamic k, dynamic v)=>'
           'MapEntry(${_cast(arg1, 'k')},${_cast(arg2, 'v')}))';
     } else {
-      return '?.cast<${arg1.name}, ${arg2.name}>()';
+      return '?.cast<${arg1.getDisplayString(withNullability: false)}, ${arg2.getDisplayString(withNullability: false)}>()';
     }
+  }
+
+  bool isMapOrIterable(DartType type) {
+    return listChecker.isExactlyType(type) ||
+        setChecker.isExactlyType(type) ||
+        iterableChecker.isExactlyType(type) ||
+        mapChecker.isExactlyType(type);
+  }
+
+  final hiveListChecker =
+      TypeChecker.fromUrl('package:hive/hive.dart#HiveList');
+  final listChecker = TypeChecker.fromUrl('dart:core#List');
+  final mapChecker = TypeChecker.fromUrl('dart:core#Map');
+  final setChecker = TypeChecker.fromUrl('dart:core#Set');
+  final iterableChecker = TypeChecker.fromUrl('dart:core#Iterable');
+  final uint8ListChecker = TypeChecker.fromUrl('dart:typed_data#Uint8List');
+
+  ClassBuilder(
+      ClassElement cls, List<AdapterField> getters, List<AdapterField> setters)
+      : super(cls, getters, setters);
+
+  String _cast(DartType type, String variable) {
+    if (hiveListChecker.isExactlyType(type)) {
+      return '($variable as HiveList)?.castHiveList()';
+    } else if (iterableChecker.isAssignableFromType(type) &&
+        !isUint8List(type)) {
+      return '($variable as List)${_castIterable(type)}';
+    } else if (mapChecker.isExactlyType(type)) {
+      return '($variable as Map)${_castMap(type)}';
+    } else {
+      return '$variable as ${type.getDisplayString(withNullability: false)}';
+    }
+  }
+
+  @override
+  String buildRead() {
+    var code = StringBuffer();
+    code.writeln('var numOfFields = reader.readByte();');
+    code.writeln('var fields = <int, dynamic>{');
+    code.writeln(
+        '  for (var i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),');
+    code.writeln('};');
+    code.write('return ${cls.name}(');
+
+    // Find unnamed constructor safely
+    ConstructorElement? constr;
+    for (var c in cls.constructors) {
+      if (c.name == '') {
+        constr = c;
+        break;
+      }
+    }
+    check(constr != null, 'Provide an unnamed constructor.');
+
+    // The remaining fields to initialize.
+    var fieldsList = setters.toList();
+
+    var initializingParams = _getConstructorParameters(constr!)
+        .where((param) => param.isInitializingFormal == true);
+    for (var param in initializingParams) {
+      AdapterField field;
+      try {
+        field = fieldsList.firstWhere((it) => it.name == param.name);
+      } catch (_) {
+        field = getters.firstWhere((it) => it.name == param.name);
+      }
+      if (param.isNamed) {
+        code.write('${param.name}: ');
+      }
+      code.write('${_cast(param.type, 'fields[${field.index}]')}, ');
+      fieldsList.remove(field);
+    }
+    code.write(')');
+
+    // There may still be fields to initialize that were not in the constructor
+    // as initializing formals. We do so using cascades.
+    for (var field in fieldsList) {
+      code.write(
+          '..${field.name} = ${_cast(field.type, 'fields[${field.index}]')}');
+    }
+
+    code.writeln(';');
+    return code.toString();
   }
 
   @override
@@ -130,7 +139,6 @@ class ClassBuilder extends Builder {
       ..write($value)''');
     }
     code.writeln(';');
-
     return code.toString();
   }
 
