@@ -39,7 +39,8 @@ class ClassBuilder extends Builder {
       return '?.map((dynamic k, dynamic v)=>'
           'MapEntry(${_cast(arg1, 'k')},${_cast(arg2, 'v')}))';
     } else {
-      return '?.cast<${arg1.getDisplayString(withNullability: false)}, ${arg2.getDisplayString(withNullability: false)}>()';
+      return '?.cast<${arg1.getDisplayString(withNullability: false)}, '
+      '${arg2.getDisplayString(withNullability: false)}>()';
     }
   }
 
@@ -51,12 +52,13 @@ class ClassBuilder extends Builder {
   }
 
   final hiveListChecker =
-      TypeChecker.fromUrl('package:hive/hive.dart#HiveList');
-  final listChecker = TypeChecker.fromUrl('dart:core#List');
-  final mapChecker = TypeChecker.fromUrl('dart:core#Map');
-  final setChecker = TypeChecker.fromUrl('dart:core#Set');
-  final iterableChecker = TypeChecker.fromUrl('dart:core#Iterable');
-  final uint8ListChecker = TypeChecker.fromUrl('dart:typed_data#Uint8List');
+      const TypeChecker.fromUrl('package:hive/hive.dart#HiveList');
+  final listChecker = const TypeChecker.fromUrl('dart:core#List');
+  final mapChecker = const TypeChecker.fromUrl('dart:core#Map');
+  final setChecker = const TypeChecker.fromUrl('dart:core#Set');
+  final iterableChecker = const TypeChecker.fromUrl('dart:core#Iterable');
+  final uint8ListChecker =
+      const TypeChecker.fromUrl('dart:typed_data#Uint8List');
 
   ClassBuilder(super.cls, super.getters, super.setters);
 
