@@ -1,5 +1,4 @@
 import 'package:analyzer/dart/element/element.dart';
-import 'package:analyzer/dart/element/element.dart' show ParameterElement;
 import 'package:analyzer/dart/element/type.dart';
 import 'package:hive_generator/src/builder.dart';
 import 'package:hive_generator/src/helper.dart';
@@ -59,9 +58,7 @@ class ClassBuilder extends Builder {
   final iterableChecker = TypeChecker.fromUrl('dart:core#Iterable');
   final uint8ListChecker = TypeChecker.fromUrl('dart:typed_data#Uint8List');
 
-  ClassBuilder(
-      ClassElement cls, List<AdapterField> getters, List<AdapterField> setters)
-      : super(cls, getters, setters);
+  ClassBuilder(super.cls, super.getters, super.setters);
 
   String _cast(DartType type, String variable) {
     if (hiveListChecker.isExactlyType(type)) {
@@ -82,6 +79,7 @@ class ClassBuilder extends Builder {
     code.writeln('var numOfFields = reader.readByte();');
     code.writeln('var fields = <int, dynamic>{');
     code.writeln(
+        // ignore: lines_longer_than_80_chars
         '  for (var i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),');
     code.writeln('};');
     code.write('return ${cls.name}(');
