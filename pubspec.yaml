@@ -8,14 +8,14 @@ environment:
   sdk: ">=3.0.0 <4.0.0"
 
 dependencies:
-  build: ^3.0.2
-  source_gen: ^4.0.0
+  build: ^3.0.0
+  source_gen: ^3.0.0
   hive: ^2.2.3
   analyzer: ^8.1.1
   dartx: ^1.2.0
 
 dev_dependencies:
-  test: ^1.6.4
+  test: ^1.26.3
   build_test: any
   build_runner: any
   flutter_lints: ^6.0.0
